@@ -137,6 +137,14 @@ import { useRouter } from 'vue-router'
 import { getSessions, createSession, getSessionMessages, deleteSession as deleteSessionApi, chatAgent, logout } from '@/api'
 import { useUserStore, useChatStore } from '@/stores'
 import echarts from '@/utils/echarts'
+import MarkdownIt from 'markdown-it'
+
+const md = new MarkdownIt({
+  html: false,
+  linkify: true,
+  typographer: true,
+  breaks: true
+})
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -188,72 +196,9 @@ function formatThinking(text) {
 }
 
 
-function renderMarkdownTable(tableText) {
-  const lines = tableText.split('\n').filter(l => l.trim())
-  if (lines.length < 2) return tableText
-  const parseRow = (line) => line.split('|').map(c => c.trim()).filter(Boolean)
-  const headerCells = parseRow(lines[0])
-  const separatorLine = lines[1]
-  if (!/^\s*\|[\s-|]+\|/.test(separatorLine)) return tableText
-  const bodyLines = lines.slice(2)
-  let h = '<table class="md-table"><thead><tr>'
-  headerCells.forEach(c => { h += '<th>' + c + '</th>' })
-  h += '</tr></thead><tbody>'
-  bodyLines.forEach(line => {
-    const cells = parseRow(line)
-    if (cells.length === 0) return
-    h += '<tr>'
-    cells.forEach(c => { h += '<td>' + c + '</td>' })
-    h += '</tr>'
-  })
-  h += '</tbody></table>'
-  return h
-}
-
 function renderMarkdown(text) {
   if (!text) return ''
-  let html = text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-  // 代码块（先保存，避免干扰表格解析）
-  const codeBlocks = []
-  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
-    codeBlocks.push('<pre class="code-block"><code>' + code + '</code></pre>')
-    return '%%CODEBLOCK_' + (codeBlocks.length - 1) + '%%'
-  })
-  // 行内代码（先保存）
-  const inlineCodes = []
-  html = html.replace(/`([^`]+)`/g, (_, code) => {
-    inlineCodes.push('<code class="inline-code">' + code + '</code>')
-    return '%%INLINECODE_' + (inlineCodes.length - 1) + '%%'
-  })
-  // 处理段落（按空行分割），识别表格
-  const paragraphs = html.split(/\n\n+/)
-  html = paragraphs.map(p => {
-    // 检测是否为 Markdown 表格（包含 | 分隔符且第二行是 --- 分隔线）
-    const tableMatch = p.match(/^(\|[^\n|]+\|)\n(\|[\s-|]+\|)\n((?:\|[^\n]+\|\n?)+)/)
-    if (tableMatch) {
-      const fullTable = tableMatch[0]
-      const tableHtml = renderMarkdownTable(fullTable)
-      return p.replace(fullTable, tableHtml)
-    }
-    // 普通段落：先处理行内格式
-    let result = p
-    result = result.replace(/^### (.+)$/gm, '<h4>$1</h4>')
-    result = result.replace(/^## (.+)$/gm, '<h3>$1</h3>')
-    result = result.replace(/^# (.+)$/gm, '<h3>$1</h3>')
-    result = result.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    result = result.replace(/\*(.+?)\*/g, '<em>$1</em>')
-    result = result.replace(/^\d+\.\s+(.+)$/gm, '<div class="list-item-num">$1</div>')
-    result = result.replace(/^[-*]\s+(.+)$/gm, '<div class="list-item">• $1</div>')
-    result = result.replace(/\n/g, '<br>')
-    return '<p>' + result + '</p>'
-  }).join('')
-  // 恢复代码块
-  html = html.replace(/%%CODEBLOCK_(\d+)%%/g, (_, i) => codeBlocks[parseInt(i)])
-  html = html.replace(/%%INLINECODE_(\d+)%%/g, (_, i) => inlineCodes[parseInt(i)])
-  return html
+  return md.render(text)
 }
 
 function copyThinking(msg) {
@@ -868,7 +813,11 @@ onBeforeUnmount(() => {
 }
 
 .message-text :deep(p) {
-  margin: 0;
+  margin: 0 0 8px;
+}
+
+.message-text :deep(p:last-child) {
+  margin-bottom: 0;
 }
 
 .message-text :deep(table) {
@@ -890,6 +839,12 @@ onBeforeUnmount(() => {
   font-weight: 600;
 }
 
+.message-text :deep(h1) {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 14px 0 8px;
+}
+
 .message-text :deep(h3) {
   font-size: 16px;
   font-weight: 600;
@@ -906,7 +861,7 @@ onBeforeUnmount(() => {
   font-weight: 600;
 }
 
-.message-text :deep(.code-block) {
+.message-text :deep(pre) {
   background: #1e293b;
   color: #e2e8f0;
   padding: 12px 16px;
@@ -917,7 +872,13 @@ onBeforeUnmount(() => {
   margin: 8px 0;
 }
 
-.message-text :deep(.inline-code) {
+.message-text :deep(pre code) {
+  background: none;
+  padding: 0;
+  color: inherit;
+}
+
+.message-text :deep(code) {
   background: rgba(37, 99, 235, 0.08);
   color: var(--color-primary);
   padding: 2px 6px;
@@ -925,9 +886,13 @@ onBeforeUnmount(() => {
   font-size: 13px;
 }
 
-.message-text :deep(.list-item),
-.message-text :deep(.list-item-num) {
-  padding-left: 8px;
+.message-text :deep(ul),
+.message-text :deep(ol) {
+  padding-left: 20px;
+  margin: 4px 0;
+}
+
+.message-text :deep(li) {
   margin: 2px 0;
 }
 

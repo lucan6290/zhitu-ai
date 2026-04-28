@@ -372,6 +372,57 @@ class SessionDeleteView(View):
 
 
 def stream_agent_chat_sse(session_id, user_id, content, deep_thinking=False):
+    """
+    AI Agent流式对话生成器（SSE）
+    
+    核心对话处理函数，通过LangChain Agent调用AI模型，
+    并以SSE流式方式实时返回响应。
+    
+    Args:
+        session_id: 会话ID，用于关联消息
+        user_id: 用户ID，用于权限验证
+        content: 用户输入的消息内容
+        deep_thinking: 是否开启深度思考模式
+            - True: 返回AI的思考过程和工具调用细节
+            - False: 仅返回最终回复内容
+    
+    Yields:
+        str: SSE格式的事件字符串，包括：
+            - content: AI回复内容片段
+            - thinking: 思考过程（deep_thinking=True时）
+            - echarts: 图表配置（如果AI生成了图表）
+            - end: 流结束标志
+            - error: 错误信息
+    
+    Workflow:
+        1. 验证会话权限
+        2. 保存用户消息到数据库
+        3. 加载LLM和工具（MCP工具 + 数据库工具）
+        4. 创建Agent并执行
+        5. 流式处理Agent事件：
+           - on_tool_start: 工具调用开始
+           - on_tool_end: 工具调用结束
+           - on_chain_stream: 链式调用流
+           - on_chat_model_stream: 模型输出流
+        6. 提取ECharts配置
+        7. 保存AI回复到数据库
+    
+    Performance:
+        - 使用asyncio实现异步处理
+        - 每次调用创建新的事件循环，避免冲突
+        - 流式输出减少用户等待时间
+    
+    Example:
+        >>> for chunk in stream_agent_chat_sse(1, 1, "你好", True):
+        ...     print(chunk)
+        event: content
+        data: 你
+        
+        event: content
+        data: 好
+        
+        event: end
+    """
     async def _async_stream():
         try:
             session = await ChatSession.objects.aget(session_id=session_id)
@@ -411,7 +462,6 @@ def stream_agent_chat_sse(session_id, user_id, content, deep_thinking=False):
                 event_type = event.get("event", "")
                 event_name = event.get("name", "")
 
-                # 工具调用开始 - 思考过程
                 if event_type == "on_tool_start" and deep_thinking:
                     tool_name = event_name or event.get("tags", ["tool"])[0]
                     tool_input = event.get("data", {}).get("input", {})
@@ -419,7 +469,6 @@ def stream_agent_chat_sse(session_id, user_id, content, deep_thinking=False):
                     full_thinking += thinking_text
                     yield _build_sse_event("thinking", thinking_text)
 
-                # 工具调用返回 - 思考过程
                 elif event_type == "on_tool_end" and deep_thinking:
                     tool_name = event_name or event.get("tags", ["tool"])[0]
                     tool_output = event.get("data", {}).get("output", "")
@@ -428,7 +477,6 @@ def stream_agent_chat_sse(session_id, user_id, content, deep_thinking=False):
                     full_thinking += thinking_text
                     yield _build_sse_event("thinking", thinking_text)
 
-                # 链式调用事件（数据分析等）- 思考过程
                 elif event_type == "on_chain_stream" and deep_thinking:
                     chunk = event.get("data", {}).get("chunk")
                     if chunk:
@@ -441,7 +489,6 @@ def stream_agent_chat_sse(session_id, user_id, content, deep_thinking=False):
                             full_thinking += thinking_text
                             yield _build_sse_event("thinking", thinking_text)
 
-                # 聊天模型流式输出 - 最终内容
                 elif event_type == "on_chat_model_stream":
                     chunk = event["data"].get("chunk")
                     if chunk and hasattr(chunk, "content") and chunk.content:
@@ -451,7 +498,6 @@ def stream_agent_chat_sse(session_id, user_id, content, deep_thinking=False):
                             full_thinking += text
                         yield _build_sse_event("content", text)
 
-            # 提取ECharts配置
             echarts_config = _extract_echarts_config(full_content)
             if echarts_config:
                 yield _build_sse_event("echarts", json.dumps(echarts_config, ensure_ascii=False))
@@ -462,7 +508,6 @@ def stream_agent_chat_sse(session_id, user_id, content, deep_thinking=False):
             logger.exception(f"Agent stream error: {e}")
             yield _build_sse_event("error", "服务器内部错误，请稍后再试")
 
-        # 保存AI回复到数据库
         if full_content:
             thinking_to_save = full_thinking if deep_thinking else None
             await ChatMessage.objects.acreate(
@@ -499,7 +544,62 @@ def stream_agent_chat_sse(session_id, user_id, content, deep_thinking=False):
 
 @method_decorator(csrf_exempt, name='dispatch')
 class ChatAgentView(View):
+    """
+    AI Agent对话视图
+    
+    处理用户与AI Agent的对话请求，返回SSE流式响应。
+    
+    Endpoints:
+        GET /agent/: 发送消息并获取AI流式回复
+    
+    Query Parameters:
+        session_id: 会话ID（必填，整数）
+        content: 用户消息内容（必填）
+        deep_thinking: 是否开启深度思考模式（可选，默认false）
+    
+    Response:
+        Content-Type: text/event-stream
+        
+        SSE事件流：
+        event: content
+        data: AI回复片段
+        
+        event: thinking
+        data: 思考过程
+        
+        event: echarts
+        data: {"series": [...]}
+        
+        event: end
+        
+        event: error
+        data: 错误信息
+    
+    Example:
+        GET /chat/agent/?session_id=1&content=你好&deep_thinking=true
+    
+    Note:
+        - 使用GET方法便于前端EventSource API调用
+        - 敏感数据建议改用POST方法
+    """
+    
     def get(self, request):
+        """
+        处理对话请求
+        
+        验证参数后启动流式对话生成器。
+        
+        Args:
+            request: Django HTTP请求对象
+                - GET.session_id: 会话ID
+                - GET.content: 消息内容
+                - GET.deep_thinking: 深度思考模式开关
+        
+        Returns:
+            StreamingHttpResponse: SSE流式响应
+                - 成功：返回AI对话流
+                - 失败：返回错误事件流
+        """
         user_id = get_login_user_id(request)
         if not user_id:
             return StreamingHttpResponse(
