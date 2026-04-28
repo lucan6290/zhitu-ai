@@ -1,9 +1,7 @@
-from ai.agents.loader import load_llm, load_agent
-from ai.agents.tools import get_weather_tool, get_database_tool
+from ai.agents.loader import load_llm, load_agent, get_database
 
 __all__ = [
     'load_llm',
     'load_agent',
-    'get_weather_tool',
-    'get_database_tool',
+    'get_database',
 ]

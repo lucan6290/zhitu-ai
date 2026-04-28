@@ -1,11 +1,17 @@
 <template>
   <div class="profile-page">
     <div class="nav-bar">
-      <button class="back-btn" @click="$router.back()">
-        返回
+      <button class="back-btn" @click="$router.push('/')">
+        返回首页
       </button>
-      <h2>个人信息</h2>
-      <button class="back-btn" @click="handleLogout">退出</button>
+      <h2>个人中心</h2>
+      <button class="back-btn back-btn-danger" @click="handleLogout">退出</button>
+    </div>
+
+    <div v-if="errorMsg" class="error-banner">
+      <span class="error-icon">⚠️</span>
+      <span>{{ errorMsg }}</span>
+      <button class="btn-retry-small" @click="loadUserInfo">重试</button>
     </div>
 
     <div class="profile-container" v-if="userInfo">
@@ -81,7 +87,11 @@
     </div>
 
     <div v-else class="loading-state">
-      <p>加载用户信息中...</p>
+      <p v-if="!errorMsg">加载用户信息中...</p>
+      <div v-else class="error-state">
+        <p class="error-text">{{ errorMsg }}</p>
+        <button class="btn-retry" @click="loadUserInfo">重试</button>
+      </div>
     </div>
   </div>
 </template>
@@ -99,17 +109,41 @@ const userInfo = ref(null)
 const isEditing = ref(false)
 const saving = ref(false)
 const editData = ref({ user_age: null, user_phone: '', new_user_pwd: '' })
+const errorMsg = ref('')
 
 async function loadUserInfo() {
+  errorMsg.value = ''
   try {
     const response = await getUserProfile()
     if (response.code === 200) {
       userInfo.value = response.data
+      userStore.updateUserInfo({
+        user_name: response.data.user_name,
+        user_age: response.data.user_age,
+        user_phone: response.data.user_phone
+      })
     } else if (response.code === 401) {
-      router.push('/login')
+      if (userStore.userInfo) {
+        userInfo.value = userStore.userInfo
+        errorMsg.value = '登录已过期，部分功能可能受限'
+      } else {
+        userStore.logout()
+        router.push('/login')
+      }
+    } else {
+      if (userStore.userInfo) {
+        userInfo.value = userStore.userInfo
+      }
+      errorMsg.value = response.msg || '获取用户信息失败'
     }
   } catch (error) {
     console.error('获取用户信息失败:', error)
+    if (userStore.userInfo) {
+      userInfo.value = userStore.userInfo
+      errorMsg.value = '无法连接到服务器，显示本地缓存信息'
+    } else {
+      errorMsg.value = '无法连接到服务器，请检查后端服务是否启动'
+    }
   }
 }
 
@@ -187,6 +221,38 @@ onMounted(() => {
   background: var(--color-background-secondary);
 }
 
+.error-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 20px;
+  background: rgba(239, 68, 68, 0.1);
+  border-bottom: 1px solid rgba(239, 68, 68, 0.2);
+  color: var(--color-error);
+  font-size: 14px;
+}
+
+.error-icon {
+  font-size: 16px;
+}
+
+.btn-retry-small {
+  padding: 4px 12px;
+  background: var(--color-error);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  cursor: pointer;
+  transition: var(--transition);
+  margin-left: 8px;
+}
+
+.btn-retry-small:hover {
+  background: #DC2626;
+}
+
 .nav-bar {
   display: flex;
   align-items: center;
@@ -215,11 +281,20 @@ onMounted(() => {
   font-size: 14px;
   cursor: pointer;
   transition: var(--transition);
-  width: 60px;
+  min-width: 72px;
 }
 
 .back-btn:hover {
   background: var(--color-border);
+}
+
+.back-btn-danger {
+  color: var(--color-error);
+}
+
+.back-btn-danger:hover {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: var(--color-error);
 }
 
 .profile-container {
@@ -295,6 +370,7 @@ onMounted(() => {
   background: var(--color-background);
   color: var(--color-text-primary);
   transition: var(--transition);
+  text-align: right;
 }
 
 .info-edit input:focus {
@@ -361,6 +437,35 @@ onMounted(() => {
   padding: 100px 20px;
   color: var(--color-text-secondary);
   font-size: 15px;
+}
+
+.error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.error-text {
+  color: var(--color-error);
+  font-size: 14px;
+  margin: 0;
+}
+
+.btn-retry {
+  padding: 10px 24px;
+  background: var(--color-primary);
+  color: white;
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.btn-retry:hover {
+  background: var(--color-primary-hover);
+  border-color: var(--color-primary-hover);
 }
 
 @media (max-width: 600px) {

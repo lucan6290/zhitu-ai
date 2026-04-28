@@ -17,7 +17,8 @@
     </div>
 
     <div class="form-container">
-      <h2>新用户注册</h2>
+      <div class="brand">职途AI</div>
+      <p class="brand-desc">新用户注册</p>
 
       <div class="form-group">
         <label>用户名</label>
@@ -38,11 +39,11 @@
       </div>
 
       <div class="form-group">
-        <label>邀请码</label>
+        <label>邀请码 <span class="required">*</span></label>
         <input
           type="text"
           v-model="formData.invitation_code"
-          placeholder="请输入邀请码"
+          placeholder="请输入邀请码（必填）"
         >
       </div>
 
@@ -62,8 +63,12 @@
         :disabled="loading"
         class="btn-primary"
       >
-        {{ loading ? '注册中...' : (useFace ? '采集人脸注册' : '账号密码注册') }}
+        {{ loading ? '注册中...' : (useFace ? '采集人脸注册' : '注册') }}
       </button>
+
+      <div v-if="errorMsg" class="error-message">
+        {{ errorMsg }}
+      </div>
 
       <div class="divider"></div>
 
@@ -88,6 +93,7 @@ const videoContainerRef = ref(null)
 const cameraReady = ref(false)
 
 const useFace = ref(false)
+const errorMsg = ref('')
 
 const formData = reactive({
   user_name: '',
@@ -101,11 +107,8 @@ let mediaStream = null
 
 async function openCamera() {
   try {
-    console.log('[Camera] 开始请求摄像头...')
-
     const devices = await navigator.mediaDevices.enumerateDevices()
     const videoDevices = devices.filter(d => d.kind === 'videoinput')
-    console.log('[Camera] 可用摄像头设备:', videoDevices.map(d => ({ label: d.label, deviceId: d.deviceId })))
 
     const constraints = {
       video: {
@@ -131,22 +134,9 @@ async function openCamera() {
         ...constraints.video,
         deviceId: { exact: realCamera.deviceId }
       }
-      console.log('[Camera] 使用真实摄像头:', realCamera.label)
-    } else {
-      console.warn('[Camera] 未检测到真实摄像头，使用默认设备')
     }
 
     const stream = await navigator.mediaDevices.getUserMedia(constraints)
-    console.log('[Camera] 摄像头权限已获取，轨道数:', stream.getTracks().length)
-
-    const track = stream.getTracks()[0]
-    console.log('[Camera] 轨道状态:', {
-      enabled: track.enabled,
-      muted: track.muted,
-      readyState: track.readyState,
-      label: track.label,
-      settings: track.getSettings()
-    })
 
     if (videoRef.value) {
       videoRef.value.srcObject = stream
@@ -154,26 +144,17 @@ async function openCamera() {
 
       await new Promise((resolve, reject) => {
         const video = videoRef.value
-        video.onloadedmetadata = () => {
-          console.log('[Camera] 元数据已加载')
-        }
-        video.onplaying = () => {
-          console.log('[Camera] 视频开始播放')
-          resolve()
-        }
+        video.onplaying = () => resolve()
         video.onerror = reject
         setTimeout(() => reject(new Error('视频播放超时')), 5000)
         video.play().catch(reject)
       })
 
       cameraReady.value = true
-      console.log('[Camera] 摄像头已就绪，视频尺寸:', videoRef.value.videoWidth, 'x', videoRef.value.videoHeight)
-    } else {
-      console.error('[Camera] videoRef 为 null，无法绑定流')
     }
   } catch (err) {
     console.error('[Camera] 摄像头打开失败:', err.name, err.message)
-    alert(`无法访问摄像头：${err.message}`)
+    errorMsg.value = `无法访问摄像头：${err.message}`
   }
 }
 
@@ -186,6 +167,7 @@ function closeCamera() {
 }
 
 async function toggleCamera() {
+  errorMsg.value = ''
   if (useFace.value) {
     await openCamera()
   } else {
@@ -209,16 +191,22 @@ function getFrameAsBase64() {
 async function handleCollect() {
   if (loading.value) return
 
+  errorMsg.value = ''
+
   if (!formData.user_name.trim()) {
-    alert('请输入用户名')
+    errorMsg.value = '请输入用户名'
+    return
+  }
+  if (formData.user_name.trim().length < 6 || formData.user_name.trim().length > 20) {
+    errorMsg.value = '用户名需要6-20个字符'
     return
   }
   if (!/^(?=.*[a-zA-Z])(?=.*\d).{6,20}$/.test(formData.user_pwd)) {
-    alert('密码需要6-20位，包含英文和数字')
+    errorMsg.value = '密码需要6-20位，包含英文和数字'
     return
   }
   if (!formData.invitation_code.trim()) {
-    alert('请输入邀请码')
+    errorMsg.value = '请输入邀请码'
     return
   }
 
@@ -231,7 +219,7 @@ async function handleCollect() {
   if (useFace.value) {
     const face_image = getFrameAsBase64()
     if (!face_image) {
-      alert('请先开启摄像头')
+      errorMsg.value = '请先开启摄像头并等待画面显示'
       return
     }
     payload.face_image = face_image
@@ -243,14 +231,13 @@ async function handleCollect() {
     const response = await register(payload)
 
     if (response.code === 200) {
-      alert('注册成功！')
       router.push('/login')
     } else {
-      alert(response.msg || '注册失败')
+      errorMsg.value = response.msg || '注册失败'
     }
   } catch (error) {
     console.error('注册失败:', error)
-    alert('请求失败，请检查后端服务')
+    errorMsg.value = '请求失败，请检查后端服务'
   } finally {
     loading.value = false
   }
@@ -323,12 +310,24 @@ onUnmounted(() => {
   box-shadow: var(--shadow-md);
 }
 
-h2 {
+.brand {
   text-align: center;
-  color: var(--color-text-primary);
-  margin-bottom: 32px;
+  color: var(--color-primary);
+  margin-bottom: 4px;
   font-size: 24px;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.brand-desc {
+  text-align: center;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  margin-bottom: 28px;
+}
+
+.required {
+  color: var(--color-error);
 }
 
 .form-group {
@@ -444,6 +443,18 @@ input::placeholder {
   cursor: not-allowed;
 }
 
+.error-message {
+  display: block;
+  text-align: center;
+  color: var(--color-error);
+  margin-top: 16px;
+  font-size: 14px;
+  padding: 10px;
+  background: rgba(239, 68, 68, 0.1);
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
 .divider {
   height: 1px;
   background: var(--color-border);
@@ -475,7 +486,7 @@ input::placeholder {
     padding: 32px 24px;
   }
 
-  h2 {
+  .brand {
     font-size: 22px;
   }
 }

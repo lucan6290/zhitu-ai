@@ -1,4 +1,4 @@
-const BASE_URL = import.meta.env.DEV ? '' : 'http://localhost:8888'
+const BASE_URL = import.meta.env.DEV ? '' : ''
 
 async function request(url, options = {}) {
   const defaultOptions = {
@@ -17,7 +17,13 @@ async function request(url, options = {}) {
       return { code: response.status, msg: '服务器无响应' }
     }
     try {
-      return JSON.parse(text)
+      const data = JSON.parse(text)
+      if (data.code === 401) {
+        localStorage.removeItem('zhiTu_logged_in')
+        localStorage.removeItem('zhiTu_user_info')
+        window.location.href = '/login'
+      }
+      return data
     } catch {
       return { code: response.status, msg: text || '服务器响应格式错误' }
     }
@@ -94,9 +100,9 @@ export async function deleteSession(sessionId) {
 
 export async function chatAgent(sessionId, content, deepThinking = false) {
   const params = new URLSearchParams({
-    session_id: sessionId,
+    session_id: String(sessionId),
     content: content,
-    deep_thinking: deepThinking
+    deep_thinking: String(deepThinking)
   })
   const url = `${BASE_URL}/api/v1/chat/agent/?${params.toString()}`
   const response = await fetch(url, { credentials: 'include' })
@@ -104,7 +110,11 @@ export async function chatAgent(sessionId, content, deepThinking = false) {
 }
 
 export async function getMcpJobs(keyword, city, limit = 20) {
-  return request(`/api/v1/mcp/jobs/?keyword=${encodeURIComponent(keyword)}&city=${encodeURIComponent(city)}&limit=${limit}`, {
+  const params = new URLSearchParams()
+  if (keyword) params.append('keyword', keyword)
+  if (city) params.append('city', city)
+  params.append('limit', String(limit))
+  return request(`/api/v1/mcp/jobs/?${params.toString()}`, {
     method: 'GET'
   })
 }

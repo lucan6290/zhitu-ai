@@ -1,7 +1,8 @@
 <template>
   <div class="login-page">
     <div class="login-container">
-      <h1>账密登录</h1>
+      <div class="brand">职途AI</div>
+      <p class="brand-desc">岗位JD智能解析与学习路径规划助手</p>
       <form @submit.prevent="handleLogin">
         <div class="form-group">
           <label>账号</label>
@@ -12,31 +13,31 @@
             required
           >
         </div>
-        
+
         <div class="form-group">
           <label>密码</label>
-          <input 
-            type="password" 
-            v-model="password" 
-            placeholder="6-20 位，英文加数字" 
+          <input
+            type="password"
+            v-model="password"
+            placeholder="6-20 位，英文加数字"
             required
           >
         </div>
-        
+
         <button type="submit" :disabled="loading" class="btn-primary">
           {{ loading ? '登录中...' : '登录' }}
         </button>
-        
+
         <div v-if="errorMsg" class="error-message">
           {{ errorMsg }}
         </div>
       </form>
-      
+
       <div class="divider"></div>
-      
+
       <div class="links">
+        <router-link to="/detect" class="link-face">人脸识别登录</router-link>
         <router-link to="/collect">还没有账号？点击去注册</router-link>
-        <router-link to="/">返回首页</router-link>
       </div>
     </div>
   </div>
@@ -44,11 +45,12 @@
 
 <script setup>
 import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { passwordLogin } from '@/api'
 import { useUserStore } from '@/stores'
 
 const router = useRouter()
+const route = useRoute()
 const userStore = useUserStore()
 
 const loginAccount = ref('')
@@ -58,21 +60,22 @@ const loading = ref(false)
 
 async function handleLogin() {
   if (loading.value) return
-  
+
   errorMsg.value = ''
   loading.value = true
-  
+
   try {
     const response = await passwordLogin(loginAccount.value, password.value)
 
     if (response.code === 200) {
-      userStore.loginSuccess({ 
+      userStore.loginSuccess({
         user_id: response.data.user_id,
-        name: response.data.user_name,
+        user_name: response.data.user_name,
         user_age: response.data.user_age,
         user_phone: response.data.user_phone
       })
-      router.push('/')
+      const redirect = route.query.redirect || '/'
+      router.push(redirect)
     } else {
       errorMsg.value = response.msg || '登录失败，请重试'
     }
@@ -105,12 +108,20 @@ async function handleLogin() {
   box-shadow: var(--shadow-md);
 }
 
-h1 {
+.brand {
   text-align: center;
-  color: var(--color-text-primary);
+  color: var(--color-primary);
+  margin-bottom: 4px;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.brand-desc {
+  text-align: center;
+  color: var(--color-text-secondary);
+  font-size: 13px;
   margin-bottom: 32px;
-  font-size: 24px;
-  font-weight: 600;
 }
 
 .form-group {
@@ -205,6 +216,11 @@ input::placeholder {
   border-radius: var(--radius-sm);
 }
 
+.link-face {
+  color: var(--color-primary) !important;
+  font-weight: 500;
+}
+
 .links a:hover {
   color: var(--color-primary);
   background: var(--color-background-secondary);
@@ -215,8 +231,8 @@ input::placeholder {
     padding: 32px 24px;
   }
 
-  h1 {
-    font-size: 22px;
+  .brand {
+    font-size: 24px;
   }
 }
 </style>

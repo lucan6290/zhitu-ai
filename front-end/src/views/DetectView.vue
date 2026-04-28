@@ -17,18 +17,26 @@
     </div>
 
     <div class="action-container">
-      <button 
-        type="button" 
+      <div class="brand">职途AI</div>
+      <p class="brand-desc">人脸识别登录</p>
+      <button
+        type="button"
         @click="handleDetect"
         :disabled="loading"
         class="btn-primary"
       >
         {{ loading ? '识别中...' : '匹配人脸登录' }}
       </button>
-      
+
+      <div v-if="errorMsg" class="error-message">
+        {{ errorMsg }}
+      </div>
+
+      <div class="divider"></div>
+
       <div class="links">
         <router-link to="/collect">还未注册？点击去注册</router-link>
-        <router-link to="/login">今天没化妆？账密登录</router-link>
+        <router-link to="/login">账号密码登录</router-link>
       </div>
     </div>
   </div>
@@ -49,12 +57,12 @@ const videoContainerRef = ref(null)
 const cameraReady = ref(false)
 
 const loading = ref(false)
+const errorMsg = ref('')
 
 let mediaStream = null
 
 async function openCamera() {
   try {
-    console.log('[Camera] 开始请求摄像头...')
     const constraints = {
       video: {
         width: { ideal: 500 },
@@ -65,20 +73,16 @@ async function openCamera() {
     }
 
     const stream = await navigator.mediaDevices.getUserMedia(constraints)
-    console.log('[Camera] 摄像头权限已获取，轨道数:', stream.getTracks().length)
 
     if (videoRef.value) {
       videoRef.value.srcObject = stream
       mediaStream = stream
       await videoRef.value.play()
       cameraReady.value = true
-      console.log('[Camera] 摄像头已就绪，视频尺寸:', videoRef.value.videoWidth, 'x', videoRef.value.videoHeight)
-    } else {
-      console.error('[Camera] videoRef 为 null，无法绑定流')
     }
   } catch (err) {
     console.error('[Camera] 摄像头打开失败:', err.name, err.message)
-    alert(`无法访问摄像头：${err.message}`)
+    errorMsg.value = `无法访问摄像头：${err.message}`
   }
 }
 
@@ -98,16 +102,18 @@ function getFrameAsBase64() {
   canvasRef.value.width = 500
   canvasRef.value.height = 600
   ctx.drawImage(videoRef.value, 0, 0, 500, 600)
-  
+
   return canvasRef.value.toDataURL('image/png')
 }
 
 async function handleDetect() {
   if (loading.value) return
 
+  errorMsg.value = ''
+
   const face_image = getFrameAsBase64()
   if (!face_image) {
-    alert('请先开启摄像头')
+    errorMsg.value = '请先等待摄像头启动'
     return
   }
 
@@ -117,19 +123,19 @@ async function handleDetect() {
     const response = await faceLogin(face_image)
 
     if (response.code === 200) {
-      userStore.loginSuccess({ 
+      userStore.loginSuccess({
         user_id: response.data.user_id,
-        name: response.data.user_name,
+        user_name: response.data.user_name,
         user_age: response.data.user_age,
         user_phone: response.data.user_phone
       })
       router.push('/')
     } else {
-      alert(response.msg || '识别失败')
+      errorMsg.value = response.msg || '识别失败'
     }
   } catch (error) {
     console.error('识别失败:', error)
-    alert('请求失败，请检查后端服务')
+    errorMsg.value = '请求失败，请检查后端服务'
   } finally {
     loading.value = false
   }
@@ -201,6 +207,20 @@ onUnmounted(() => {
   box-shadow: var(--shadow-md);
 }
 
+.brand {
+  color: var(--color-primary);
+  margin-bottom: 4px;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.brand-desc {
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  margin-bottom: 20px;
+}
+
 .btn-primary {
   width: 100%;
   padding: 14px;
@@ -212,7 +232,6 @@ onUnmounted(() => {
   font-weight: 500;
   cursor: pointer;
   transition: var(--transition);
-  margin-bottom: 20px;
 }
 
 .btn-primary:hover:not(:disabled) {
@@ -223,6 +242,24 @@ onUnmounted(() => {
 .btn-primary:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.error-message {
+  display: block;
+  text-align: center;
+  color: var(--color-error);
+  margin-top: 16px;
+  font-size: 14px;
+  padding: 10px;
+  background: rgba(239, 68, 68, 0.1);
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.divider {
+  height: 1px;
+  background: var(--color-border);
+  margin: 20px 0;
 }
 
 .links {
@@ -247,6 +284,10 @@ onUnmounted(() => {
 @media (max-width: 600px) {
   .action-container {
     padding: 24px;
+  }
+
+  .brand {
+    font-size: 22px;
   }
 }
 </style>

@@ -90,4 +90,8 @@ LLM_CONFIG = {
 
 INVITATION_CODE = os.environ.get('INVITATION_CODE', '')
 
-MCP_SERVER_URL = os.environ.get('MCP_SERVER_URL', 'http://127.0.0.1:8081/mcp')
+MCP_CONFIG = {
+    'command': os.environ.get('MCP_COMMAND', 'npx'),
+    'args': os.environ.get('MCP_ARGS', '-y,@zizaiwork/mcp').split(','),
+    'api_key': os.environ.get('ZAI_API_KEY', ''),
+}

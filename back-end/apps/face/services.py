@@ -127,19 +127,20 @@ class DatabaseService:
         )
 
     @staticmethod
-    def insert_user(name: str, age: int, phone: str, pwd: str) -> int:
+    def insert_user(user_id: int, name: str, age: int, phone: str, pwd: str) -> bool:
+        """插入用户信息"""
         try:
             conn = DatabaseService.get_connection()
             cursor = conn.cursor()
-            sql = "INSERT INTO user_info(user_name, user_age, user_phone, user_pwd, created_at, updated_at) VALUES (%s, %s, %s, %s, NOW(), NOW())"
-            cursor.execute(sql, (name, age, phone, pwd))
+            sql = "INSERT INTO user_info(user_id, user_name, user_age, user_phone, user_pwd, created_at, updated_at) VALUES (%s, %s, %s, %s, %s, NOW(), NOW())"
+            cursor.execute(sql, (user_id, name, age, phone, pwd))
             conn.commit()
-            return cursor.lastrowid
+            return True
         except Exception as e:
-            print(f"数据库插入失败: {e}")
+            print(f"数据库插入失败：{e}")
             if 'conn' in locals():
                 conn.rollback()
-            return 0
+            return False
         finally:
             if 'conn' in locals():
                 conn.close()
